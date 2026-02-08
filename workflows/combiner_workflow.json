@@ -1,0 +1,177 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 173556340294486,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "28",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 768,
+      "height": 1344,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": [
+        "60",
+        0
+      ],
+      "clip": [
+        "28",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": [
+        "60",
+        1
+      ],
+      "clip": [
+        "28",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "25",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "02-07-2026",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "25": {
+    "inputs": {
+      "ckpt_name": "your-checkpoint.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "28": {
+    "inputs": {
+      "lora_name": "your-lora.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "25",
+        0
+      ],
+      "clip": [
+        "25",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "56": {
+    "inputs": {
+      "anything": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "Show Any"
+    }
+  },
+  "57": {
+    "inputs": {
+      "anything": [
+        "60",
+        1
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "Show Any"
+    }
+  },
+  "60": {
+    "inputs": {
+      "character_file": "sample_1girl_v1.txt",
+      "style_file": "style_names_v1.txt",
+      "char_start_index": 0,
+      "style_start_index": 0,
+      "char_count": 1,
+      "style_count": 8,
+      "preset": "dynamic",
+      "random_action": true,
+      "random_background": true,
+      "random_camera": true,
+      "custom_positive": "",
+      "custom_negative": "",
+      "seed": 126801266743228
+    },
+    "class_type": "AutoPromptCombiner",
+    "_meta": {
+      "title": "🎨 Auto Prompt Combiner"
+    }
+  }
+}
