@@ -13,16 +13,13 @@ from .nodes import (
     AutoPromptCombiner,
     AutoPromptLoader,
     AutoPromptRedNote,
+    PassportPrompt,
+    PassportResize,
+    PassportTile,
     SuffixEditor,
 )
 
-# Conditional import for passport nodes (requires torch/diffusers)
-from .nodes import _PASSPORT_NODES_AVAILABLE
-
-if _PASSPORT_NODES_AVAILABLE:
-    from .nodes import QwenPassportPhoto, QwenPassportPhotoUnload
-
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Node mappings for ComfyUI registration
 NODE_CLASS_MAPPINGS: dict[str, type] = {
@@ -31,6 +28,9 @@ NODE_CLASS_MAPPINGS: dict[str, type] = {
     "AutoPromptCombiner": AutoPromptCombiner,
     "AutoPromptRedNote": AutoPromptRedNote,
     "SuffixEditor": SuffixEditor,
+    "PassportPrompt": PassportPrompt,
+    "PassportResize": PassportResize,
+    "PassportTile": PassportTile,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
@@ -39,14 +39,10 @@ NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
     "AutoPromptCombiner": "🎨 Auto Prompt Combiner",
     "AutoPromptRedNote": "🎨 Auto Prompt RedNote",
     "SuffixEditor": "✨ Suffix Editor",
+    "PassportPrompt": "📷 Passport Prompt",
+    "PassportResize": "📷 Passport Resize",
+    "PassportTile": "📷 Passport Tile (4x6)",
 }
-
-# Register passport nodes if available
-if _PASSPORT_NODES_AVAILABLE:
-    NODE_CLASS_MAPPINGS["QwenPassportPhoto"] = QwenPassportPhoto
-    NODE_CLASS_MAPPINGS["QwenPassportPhotoUnload"] = QwenPassportPhotoUnload
-    NODE_DISPLAY_NAME_MAPPINGS["QwenPassportPhoto"] = "📷 Qwen Passport Photo"
-    NODE_DISPLAY_NAME_MAPPINGS["QwenPassportPhotoUnload"] = "📷 Qwen Passport Unload"
 
 __all__ = [
     "NODE_CLASS_MAPPINGS",

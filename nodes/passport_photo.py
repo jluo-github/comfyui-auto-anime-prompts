@@ -1,58 +1,125 @@
 """
-QwenPassportPhoto node for ComfyUI.
+Passport photo nodes for ComfyUI (GGUF/Native workflow compatible).
 
-Uses Qwen-Image-Edit-2511 to transform selfies into USA passport-compliant photos.
+These nodes work with any ComfyUI image workflow - no special dependencies.
+Designed for use with Qwen-Image-Edit-2511 GGUF workflow.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from PIL import Image
+import numpy as np
 import torch
 
-from ..core.passport_utils import (
-    DEFAULT_PASSPORT_PROMPT,
-    PASSPORT_SIZES,
-    get_qwen_pipeline,
-    pil_to_tensor,
-    resize_to_passport,
-    tensor_to_pil,
-    unload_qwen_pipeline,
-    validate_passport_dimensions,
+
+# USA Passport Photo Specifications
+PASSPORT_SIZES: dict[str, tuple[int, int]] = {
+    "2x2_inch_600dpi": (600, 600),  # CVS/Walgreens print quality
+    "2x2_inch_300dpi": (300, 300),  # Standard print
+    "digital_only": (800, 800),  # High-res square for digital use
+}
+
+DEFAULT_PASSPORT_PROMPT = (
+    "Make a professional USA passport photo: pure white background, "
+    "center the face and shoulders perfectly, neutral expression with "
+    "both eyes open and mouth closed, even studio lighting with no shadows, "
+    "high resolution, formal portrait style, head occupies 50-69% of image height"
 )
 
 
-class QwenPassportPhoto:
+class PassportPrompt:
     """
-    Transform selfies into USA passport-compliant photos using Qwen-Image-Edit-2511.
+    Generate optimized prompts for USA passport photo editing.
 
-    This node uses AI to:
-    - Replace background with pure white
-    - Center face and shoulders properly
-    - Adjust lighting for even, shadow-free appearance
-    - Resize to standard passport dimensions (2x2 inches)
-
-    USA Passport Requirements:
-    - 2x2 inches (51x51 mm)
-    - White background
-    - Head size: 1 to 1-3/8 inches (25-35mm)
-    - Neutral expression, eyes open, mouth closed
-
-    Inputs:
-        image: Your selfie or portrait photo
-        prompt: Edit instructions (uses optimized default)
-        output_size: Target dimensions for printing
-        num_inference_steps: More steps = better quality, slower
-        true_cfg_scale: Prompt adherence strength
-        seed: For reproducible results
+    Use with Qwen-Image-Edit-2511 or similar image editing models.
+    Connect the output to your CLIP Text Encode (Positive Prompt) node.
 
     Outputs:
-        IMAGE: Passport-ready photo
-        info: Dimensions and compliance notes
+        prompt: Optimized passport photo generation prompt
+        negative: Minimal negative prompt (empty for Qwen)
+    """
+
+    CATEGORY = "prompt/passport"
+    FUNCTION = "get_prompt"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("prompt", "negative")
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        """Define input parameters for the node."""
+        return {
+            "required": {
+                "use_default_prompt": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
+                "custom_prompt": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "placeholder": "Custom prompt (leave empty to use default)",
+                    },
+                ),
+                "append_to_default": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "placeholder": "Additional tags to append to default prompt",
+                    },
+                ),
+            },
+        }
+
+    def get_prompt(
+        self,
+        use_default_prompt: bool,
+        custom_prompt: str = "",
+        append_to_default: str = "",
+    ) -> tuple[str, str]:
+        """
+        Generate passport photo prompt.
+
+        Args:
+            use_default_prompt: Use the optimized default passport prompt
+            custom_prompt: Full custom prompt (overrides default if provided)
+            append_to_default: Additional tags to append to default prompt
+
+        Returns:
+            Tuple of (positive_prompt, negative_prompt)
+        """
+        if not use_default_prompt and custom_prompt.strip():
+            prompt = custom_prompt.strip()
+        else:
+            prompt = DEFAULT_PASSPORT_PROMPT
+            if append_to_default.strip():
+                prompt = f"{prompt}, {append_to_default.strip()}"
+
+        # Qwen models work best with empty/minimal negative
+        negative = ""
+
+        return (prompt, negative)
+
+
+class PassportResize:
+    """
+    Resize images to USA passport photo dimensions.
+
+    Standard CVS/Walgreens print size: 600x600 pixels (2x2 inches at 300 DPI)
+
+    Inputs:
+        image: Any image to resize
+        output_size: Target passport dimensions
+
+    Outputs:
+        IMAGE: Square passport photo at target resolution
+        info: Size information for reference
     """
 
     CATEGORY = "image/passport"
-    FUNCTION = "generate_passport_photo"
+    FUNCTION = "resize_to_passport"
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "info")
 
@@ -62,151 +129,141 @@ class QwenPassportPhoto:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "prompt": (
-                    "STRING",
-                    {
-                        "default": DEFAULT_PASSPORT_PROMPT,
-                        "multiline": True,
-                    },
-                ),
                 "output_size": (
                     list(PASSPORT_SIZES.keys()),
                     {"default": "2x2_inch_600dpi"},
                 ),
-                "num_inference_steps": (
-                    "INT",
-                    {
-                        "default": 40,
-                        "min": 20,
-                        "max": 80,
-                        "step": 5,
-                    },
-                ),
-                "true_cfg_scale": (
-                    "FLOAT",
-                    {
-                        "default": 4.0,
-                        "min": 1.0,
-                        "max": 10.0,
-                        "step": 0.5,
-                    },
-                ),
-                "seed": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 0xFFFFFFFFFFFFFFFF,
-                    },
+                "crop_mode": (
+                    ["center", "top", "none"],
+                    {"default": "center"},
                 ),
             },
         }
 
-    def generate_passport_photo(
+    def resize_to_passport(
         self,
         image: torch.Tensor,
-        prompt: str,
         output_size: str,
-        num_inference_steps: int,
-        true_cfg_scale: float,
-        seed: int,
+        crop_mode: str,
     ) -> tuple[torch.Tensor, str]:
         """
-        Generate a passport photo from input image.
+        Resize image to passport dimensions.
 
         Args:
-            image: Input image tensor (batch, H, W, C)
-            prompt: Edit instructions for the model
-            output_size: Target size key from PASSPORT_SIZES
-            num_inference_steps: Diffusion steps
-            true_cfg_scale: CFG scale for prompt adherence
-            seed: Random seed for reproducibility
+            image: Input image tensor (B, H, W, C)
+            output_size: Target size key
+            crop_mode: How to crop non-square images
 
         Returns:
-            Tuple of (output_image_tensor, info_string)
+            Tuple of (resized_image, info_string)
         """
-        # Convert ComfyUI tensor to PIL
-        pil_image = tensor_to_pil(image)
+        target_size = PASSPORT_SIZES[output_size]
+        target_w, target_h = target_size
 
-        # Load or get cached pipeline
-        pipeline = get_qwen_pipeline()
+        # Convert tensor to PIL for processing
+        # ComfyUI format: (B, H, W, C) float32 [0, 1]
+        img_np = image[0].cpu().numpy()
+        img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
+        pil_img = Image.fromarray(img_np, mode="RGB")
 
-        # Prepare inputs
-        inputs = {
-            "image": [pil_image],
-            "prompt": prompt,
-            "generator": torch.manual_seed(seed),
-            "true_cfg_scale": true_cfg_scale,
-            "negative_prompt": " ",
-            "num_inference_steps": num_inference_steps,
-            "guidance_scale": 1.0,
-            "num_images_per_prompt": 1,
-        }
+        orig_w, orig_h = pil_img.size
 
-        # Run inference
-        with torch.inference_mode():
-            output = pipeline(**inputs)
+        # Crop to square if needed
+        if crop_mode != "none" and orig_w != orig_h:
+            min_dim = min(orig_w, orig_h)
+            if crop_mode == "center":
+                left = (orig_w - min_dim) // 2
+                top = (orig_h - min_dim) // 2
+            else:  # top - keep face at top
+                left = (orig_w - min_dim) // 2
+                top = 0
+            pil_img = pil_img.crop((left, top, left + min_dim, top + min_dim))
 
-        result_pil = output.images[0]
+        # Resize to target
+        resized = pil_img.resize(target_size, Image.Resampling.LANCZOS)
 
-        # Resize to passport dimensions
-        resized = resize_to_passport(result_pil, output_size)
+        # Convert back to tensor
+        result_np = np.array(resized).astype(np.float32) / 255.0
+        result_tensor = torch.from_numpy(result_np).unsqueeze(0)
 
-        # Validate final output
-        validation = validate_passport_dimensions(resized)
-
-        # Build info string
-        target_dims = PASSPORT_SIZES[output_size]
+        # Build info
         info = (
-            f"Output: {validation['dimensions']}\n"
-            f"Target: {target_dims[0]}x{target_dims[1]}px ({output_size})\n"
-            f"Status: {validation['recommendation']}\n"
-            f"Steps: {num_inference_steps}, CFG: {true_cfg_scale}, Seed: {seed}"
+            f"Input: {orig_w}x{orig_h}\n"
+            f"Output: {target_w}x{target_h} ({output_size})\n"
+            f"Crop: {crop_mode}\n"
+            f"Ready for CVS/Walgreens printing"
         )
-
-        # Convert back to ComfyUI tensor
-        result_tensor = pil_to_tensor(resized)
 
         return (result_tensor, info)
 
 
-class QwenPassportPhotoUnload:
+class PassportTile:
     """
-    Unload Qwen-Image-Edit-2511 model from memory.
+    Tile 4 passport photos onto a 4x6 inch print sheet.
 
-    Use this node to free GPU memory when you're done generating passport photos.
-    Connect to any workflow to trigger unloading.
+    Creates a standard CVS/Walgreens 4x6 print with 4 passport photos.
+    Output: 1800x1200 pixels (4x6 inches at 300 DPI)
+
+    Inputs:
+        image: Single 600x600 passport photo
 
     Outputs:
-        status: Message confirming unload status
+        IMAGE: 4x6 sheet with 4 tiled photos
     """
 
     CATEGORY = "image/passport"
-    FUNCTION = "unload_model"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("status",)
+    FUNCTION = "tile_passport"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("tiled_image",)
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, Any]:
         """Define input parameters for the node."""
         return {
             "required": {
-                "trigger": ("*", {}),  # Accept any input to trigger
+                "image": ("IMAGE",),
             },
         }
 
-    def unload_model(self, trigger: Any) -> tuple[str]:
+    def tile_passport(self, image: torch.Tensor) -> tuple[torch.Tensor]:
         """
-        Unload the Qwen pipeline from memory.
+        Tile passport photo onto 4x6 print sheet.
 
         Args:
-            trigger: Any input to trigger the unload
+            image: 600x600 passport photo tensor
 
         Returns:
-            Tuple with status message
+            1800x1200 tiled image (4x6 at 300 DPI)
         """
-        was_unloaded = unload_qwen_pipeline()
+        # Convert to PIL
+        img_np = image[0].cpu().numpy()
+        img_np = (img_np * 255).clip(0, 255).astype(np.uint8)
+        passport = Image.fromarray(img_np, mode="RGB")
 
-        if was_unloaded:
-            return ("Qwen-Image-Edit-2511 unloaded. GPU memory freed.",)
-        return ("No model was loaded.",)
+        # Resize to exactly 600x600 if needed
+        if passport.size != (600, 600):
+            passport = passport.resize((600, 600), Image.Resampling.LANCZOS)
+
+        # Create 4x6 canvas (1800x1200 at 300 DPI)
+        # Layout: 2 columns x 2 rows of 600x600, centered
+        canvas = Image.new("RGB", (1800, 1200), color=(255, 255, 255))
+
+        # Calculate positions (centered with some margin)
+        # 2 photos horizontally: 600*2 = 1200, margin = (1800-1200)/2 = 300
+        # 2 photos vertically: 600*2 = 1200, no vertical margin needed
+        margin_x = 300
+        positions = [
+            (margin_x, 0),  # Top left
+            (margin_x + 600, 0),  # Top right
+            (margin_x, 600),  # Bottom left
+            (margin_x + 600, 600),  # Bottom right
+        ]
+
+        for pos in positions:
+            canvas.paste(passport, pos)
+
+        # Convert back to tensor
+        result_np = np.array(canvas).astype(np.float32) / 255.0
+        result_tensor = torch.from_numpy(result_np).unsqueeze(0)
+
+        return (result_tensor,)
