@@ -99,7 +99,7 @@ class AutoPromptRedNote:
             "optional": {
                 "custom_positive": ("STRING", {"default": "", "multiline": True}),
                 "custom_negative": ("STRING", {"default": "", "multiline": True}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+                "seed": ("INT", {"default": -1, "min": -1, "max": 0xFFFFFFFFFFFFFFFF}),
             },
         }
 
@@ -173,15 +173,18 @@ class AutoPromptRedNote:
         # Detect Model Mode
         is_flux = target_model == "Flux/Qwen (Natural)"
 
-        random.seed(seed)
-        rng = random.Random(seed)
+        # Use time-based seed if seed is -1 (true random), otherwise use provided seed
+        if seed == -1:
+            rng = random.Random()  # Uses current time
+        else:
+            rng = random.Random(seed)
 
         for i in range(batch_size):
             current_index = start_index + i
 
             # Select Character
             if mode == "random":
-                char_idx = random.randint(0, total_chars - 1)
+                char_idx = rng.randint(0, total_chars - 1)
             else:
                 char_idx = current_index % total_chars
             entry = target_list[char_idx]
@@ -192,7 +195,7 @@ class AutoPromptRedNote:
                 if enable_style_lock:
                     style_idx = current_index % total_styles
                 else:
-                    style_idx = random.randint(0, total_styles - 1)
+                    style_idx = rng.randint(0, total_styles - 1)
                 style_tag = style_prompts[style_idx].tags.strip().rstrip(",")
 
             # --- BRANCHING LOGIC ---
