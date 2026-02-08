@@ -9,6 +9,13 @@ import random
 import re
 from typing import Any
 
+from ..core.random_utils import (
+    needs_safety_shorts,
+    pick_action,
+    pick_background,
+    pick_camera,
+)
+
 from ..core.constants import (
     ACTIONS,
     BACKGROUNDS,
@@ -167,6 +174,7 @@ class AutoPromptRedNote:
         is_flux = target_model == "Flux/Qwen (Natural)"
 
         random.seed(seed)
+        rng = random.Random(seed)
 
         for i in range(batch_size):
             current_index = start_index + i
@@ -204,13 +212,13 @@ class AutoPromptRedNote:
 
                 # 2. Action Sentence
                 if random_action:
-                    act = random.choice(ACTIONS)
+                    act = pick_action(rng)
                     clean_act = self.clean_tag(act)
                     prompt_text += f" {FLUX_CONNECTORS['action']} {clean_act}."
 
                 # 3. Background Sentence
                 if random_background:
-                    bg = random.choice(BACKGROUNDS)
+                    bg = pick_background(rng)
                     clean_bg = self.clean_tag(bg)
                     prompt_text += f" {FLUX_CONNECTORS['background']} {clean_bg}."
 
@@ -222,7 +230,7 @@ class AutoPromptRedNote:
 
                 # 5. Style/Camera Sentence
                 if style_tag or random_camera:
-                    cam = random.choice(CAMERA_EFFECTS) if random_camera else ""
+                    cam = pick_camera(rng) if random_camera else ""
                     clean_style = self.clean_tag(style_tag)
                     clean_cam = self.clean_tag(cam)
 
@@ -260,17 +268,15 @@ class AutoPromptRedNote:
 
                 # Layer 4: Action & Safety
                 if random_action:
-                    selected_action = random.choice(ACTIONS)
+                    selected_action = pick_action(rng)
                     parts.append(selected_action)
-                    if any(
-                        x in selected_action for x in ["sitting", "hugging", "lying"]
-                    ):
+                    if needs_safety_shorts(selected_action):
                         parts.append(REDNOTE_SAFETY_SHORTS)
 
                 if random_background:
-                    parts.append(random.choice(BACKGROUNDS))
+                    parts.append(pick_background(rng))
                 if random_camera:
-                    parts.append(random.choice(CAMERA_EFFECTS))
+                    parts.append(pick_camera(rng))
 
                 # Layer 5: Mood
                 mood_tags = get_mood_prompt(mood_level)
